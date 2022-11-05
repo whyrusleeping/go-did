@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
@@ -15,7 +16,8 @@ const (
 )
 
 type DID struct {
-	val string
+	val   string
+	proto string
 }
 
 func (d *DID) String() string {
@@ -30,9 +32,21 @@ func (d *DID) UnmarshalJSON(b []byte) error {
 	return json.Unmarshal(b, &d.val)
 }
 
+func (d *DID) Protocol() string {
+	return d.proto
+}
+
 func ParseDID(s string) (DID, error) {
-	// TODO: some actual parsing
-	return DID{val: s}, nil
+	parts := strings.Split(s, ":")
+	if len(parts) != 3 {
+		return DID{}, fmt.Errorf("invalid did: must contain three parts")
+	}
+
+	if parts[0] != "did" {
+		return DID{}, fmt.Errorf("invalid did: first segment must be 'did'")
+	}
+
+	return DID{val: s, proto: parts[1]}, nil
 }
 
 type Document struct {
@@ -40,11 +54,13 @@ type Document struct {
 
 	ID DID `json:"id"`
 
+	AlsoKnownAs []string `json:"alsoKnownAs"`
+
 	Authentication []interface{} `json:"authentication"`
 
 	VerificationMethod []VerificationMethod `json:"verificationMethod"`
 
-	Services []Service `json:"services"`
+	Service []Service `json:"service"`
 }
 
 // TODO: this needs to be a 'canonical' serialization

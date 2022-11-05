@@ -16,8 +16,11 @@ type Signature struct {
 }
 
 type SignedDocument struct {
-	Signature *Signature
-	Document  *Document
+	Signature *Signature `json:"signature"`
+	Document  *Document  `json:"document"`
+
+	// TODO: should probably have a sequence number on these to prevent replays
+	//Sequence  int        `json:"seq"`
 }
 
 func SignDocument(doc *Document, k ed25519.PrivateKey) (*SignedDocument, error) {
