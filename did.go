@@ -75,7 +75,7 @@ type Service struct {
 }
 
 type VerificationMethod struct {
-	ID                 DID           `json:"id"`
+	ID                 string        `json:"id"`
 	Type               string        `json:"type"`
 	Controller         string        `json:"controller"`
 	PublicKeyJwk       *PublicKeyJwk `json:"publicKeyJwk,omitempty"`
@@ -137,11 +137,12 @@ func (pk *PublicKeyJwk) GetRawKey() (interface{}, error) {
 	return rawkey, nil
 }
 
-func (d *Document) GetPublicKey() (ed25519.PublicKey, error) {
-	if len(d.VerificationMethod) != 1 {
-		return nil, fmt.Errorf("doc must have only one verification method (todo: fixme)")
+func (d *Document) GetPublicKey(id string) (ed25519.PublicKey, error) {
+	for _, vm := range d.VerificationMethod {
+		if id == vm.ID || id == "" {
+			return vm.GetPublicKey()
+		}
 	}
-	vm := d.VerificationMethod[0]
 
-	return vm.GetPublicKey()
+	return nil, fmt.Errorf("no key found by that ID")
 }
