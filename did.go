@@ -82,7 +82,7 @@ type VerificationMethod struct {
 	PublicKeyMultibase *string       `json:"publicKeyMultibase,omitempty"`
 }
 
-func (vm VerificationMethod) GetPublicKey() (ed25519.PublicKey, error) {
+func (vm VerificationMethod) GetPublicKey() (*PubKey, error) {
 	if vm.PublicKeyJwk != nil {
 		k, err := vm.PublicKeyJwk.GetRawKey()
 		if err != nil {
@@ -94,10 +94,23 @@ func (vm VerificationMethod) GetPublicKey() (ed25519.PublicKey, error) {
 			return nil, fmt.Errorf("only ed25519 keys are currently supported")
 		}
 
-		return ek, nil
+		return &PubKey{
+			Type: "ed25519",
+			Raw:  []byte(ek),
+		}, nil
 	}
 
-	return nil, fmt.Errorf("currently only jwk format keys are allowed")
+	if vm.PublicKeyMultibase != nil {
+		k, err := KeyFromMultibase(*vm.PublicKeyMultibase)
+		if err != nil {
+			return nil, err
+		}
+
+		return k, nil
+
+	}
+
+	return nil, fmt.Errorf("no public key specified in verificationMethod")
 }
 
 type PublicKeyJwk struct {
@@ -137,7 +150,7 @@ func (pk *PublicKeyJwk) GetRawKey() (interface{}, error) {
 	return rawkey, nil
 }
 
-func (d *Document) GetPublicKey(id string) (ed25519.PublicKey, error) {
+func (d *Document) GetPublicKey(id string) (*PubKey, error) {
 	for _, vm := range d.VerificationMethod {
 		if id == vm.ID || id == "" {
 			return vm.GetPublicKey()

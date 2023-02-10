@@ -1,11 +1,13 @@
 module github.com/whyrusleeping/go-did
 
-go 1.17
+go 1.18
 
 require (
+	github.com/ipsn/go-secp256k1 v0.0.0-20180726113642-9d62b9f0bc52
 	github.com/labstack/echo/v4 v4.7.2
 	github.com/lestrrat-go/jwx/v2 v2.0.0
 	github.com/multiformats/go-multibase v0.0.3
+	github.com/multiformats/go-varint v0.0.7
 	github.com/urfave/cli/v2 v2.5.0
 )
 
