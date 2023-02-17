@@ -161,7 +161,12 @@ func (k *PubKey) Verify(msg, sig []byte) error {
 		return nil
 
 	case KeyTypeSecp256k1:
-		panic("nyi")
+		h := sha256.Sum256(msg)
+		if !secp.VerifySignature(k.Raw.([]byte), h[:], sig) {
+			return ErrInvalidSignature
+		}
+
+		return nil
 	default:
 		return fmt.Errorf("unsupported key type: %q", k.Type)
 
@@ -200,34 +205,19 @@ func (k *PrivKey) RawBytes() ([]byte, error) {
 	}
 }
 
-func KeyFromMultibase(mbstr string) (*PubKey, error) {
-	_, data, err := multibase.Decode(mbstr)
+func KeyFromMultibase(vm VerificationMethod) (*PubKey, error) {
+	_, data, err := multibase.Decode(*vm.PublicKeyMultibase)
 	if err != nil {
 		return nil, err
 	}
 
-	val, n, err := varint.FromUvarint(data)
-	if err != nil {
-		return nil, err
-	}
-
-	switch val {
-	case MCed25519:
+	switch vm.Type {
+	case KeyTypeEd25519, KeyTypeSecp256k1, KeyTypeP256:
 		return &PubKey{
-			Type: KeyTypeEd25519,
-			Raw:  data[n:],
-		}, nil
-	case MCP256:
-		return &PubKey{
-			Type: KeyTypeP256,
-			Raw:  data[n:],
-		}, nil
-	case MCSecp256k1:
-		return &PubKey{
-			Type: KeyTypeSecp256k1,
-			Raw:  data[n:],
+			Type: vm.Type,
+			Raw:  data,
 		}, nil
 	default:
-		return nil, fmt.Errorf("unrecognized key multicodec")
+		return nil, fmt.Errorf("unrecognized key multicodec: %q", vm.Type)
 	}
 }

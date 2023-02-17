@@ -101,7 +101,7 @@ func (vm VerificationMethod) GetPublicKey() (*PubKey, error) {
 	}
 
 	if vm.PublicKeyMultibase != nil {
-		k, err := KeyFromMultibase(*vm.PublicKeyMultibase)
+		k, err := KeyFromMultibase(vm)
 		if err != nil {
 			return nil, err
 		}
