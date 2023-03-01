@@ -47,12 +47,12 @@ func (k *PrivKey) Public() *PubKey {
 
 		return &PubKey{
 			Type: k.Type,
-			Raw:  elliptic.MarshalCompressed(elliptic.P256(), sk.X, sk.Y),
+			Raw:  elliptic.Marshal(elliptic.P256(), sk.X, sk.Y),
 		}
 	case KeyTypeSecp256k1:
 		curve := secp.S256()
 		x, y := curve.ScalarBaseMult(k.Raw.([]byte))
-		encPub := elliptic.MarshalCompressed(secp.S256(), x, y)
+		encPub := elliptic.Marshal(secp.S256(), x, y)
 
 		return &PubKey{
 			Type: k.Type,
@@ -142,7 +142,11 @@ func (k *PubKey) Verify(msg, sig []byte) error {
 
 		return nil
 	case KeyTypeP256:
-		x, y := elliptic.UnmarshalCompressed(elliptic.P256(), k.Raw.([]byte))
+		x, y := elliptic.Unmarshal(elliptic.P256(), k.Raw.([]byte))
+		if x == nil {
+			return fmt.Errorf("pubkey was invalid")
+		}
+
 		pubk := &ecdsa.PublicKey{
 			Curve: elliptic.P256(),
 			X:     x,
@@ -158,8 +162,8 @@ func (k *PubKey) Verify(msg, sig []byte) error {
 		if !ecdsa.Verify(pubk, h[:], r, s) {
 			return ErrInvalidSignature
 		}
-		return nil
 
+		return nil
 	case KeyTypeSecp256k1:
 		h := sha256.Sum256(msg)
 		if !secp.VerifySignature(k.Raw.([]byte), h[:], sig) {
