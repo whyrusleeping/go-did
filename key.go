@@ -13,6 +13,7 @@ import (
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-varint"
 
+	"github.com/ipsn/go-secp256k1"
 	secp "github.com/ipsn/go-secp256k1"
 )
 
@@ -111,15 +112,33 @@ func (k *PubKey) DID() string {
 	return "did:key:" + k.MultibaseString()
 }
 
+func convertToCompressed(curve elliptic.Curve, k []byte) ([]byte, error) {
+	x, y := elliptic.Unmarshal(curve, k)
+	if x == nil {
+		return nil, fmt.Errorf("invalid key")
+	}
+
+	return elliptic.MarshalCompressed(curve, x, y), nil
+}
+
 func (k *PubKey) MultibaseString() string {
 	var buf []byte
 	switch k.Type {
 	case KeyTypeEd25519:
 		buf = varEncode(MCed25519, k.Raw.([]byte))
 	case KeyTypeP256:
-		buf = varEncode(MCP256, k.Raw.([]byte))
+		kb, err := convertToCompressed(elliptic.P256(), k.Raw.([]byte))
+		if err != nil {
+			return "<invalid key>"
+		}
+
+		buf = varEncode(MCP256, kb)
 	case KeyTypeSecp256k1:
-		buf = varEncode(MCSecp256k1, k.Raw.([]byte))
+		kb, err := convertToCompressed(secp256k1.S256(), k.Raw.([]byte))
+		if err != nil {
+			return "<invalid key>"
+		}
+		buf = varEncode(MCSecp256k1, kb)
 	default:
 		return "<invalid key type>"
 	}
