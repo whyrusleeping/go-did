@@ -12,8 +12,6 @@ import (
 
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-varint"
-
-	"github.com/ipsn/go-secp256k1"
 	secp "github.com/ipsn/go-secp256k1"
 )
 
@@ -134,7 +132,7 @@ func (k *PubKey) MultibaseString() string {
 
 		buf = varEncode(MCP256, kb)
 	case KeyTypeSecp256k1:
-		kb, err := convertToCompressed(secp256k1.S256(), k.Raw.([]byte))
+		kb, err := convertToCompressed(secp.S256(), k.Raw.([]byte))
 		if err != nil {
 			return "<invalid key>"
 		}
