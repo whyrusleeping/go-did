@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -49,14 +48,14 @@ func (s *Server) handleGetDocument(c echo.Context) error {
 	return c.JSON(200, doc)
 }
 
-func (s *Server) pubkeyForID(id did.DID) (ed25519.PublicKey, error) {
+func (s *Server) pubkeyForID(id did.DID) (*did.PubKey, error) {
 	doc, ok := s.getDocument(id)
 	if !ok {
 		return nil, fmt.Errorf("no registered account for that did")
 	}
 
 	// TODO: support more than one verification method
-	return doc.Document.GetPublicKey()
+	return doc.Document.GetPublicKey("")
 }
 
 func (s *Server) updateDocument(id did.DID, doc *did.SignedDocument) error {

@@ -76,7 +76,7 @@ type Service struct {
 
 type VerificationMethod struct {
 	ID                 string        `json:"id"`
-	Type               string        `json:"type"`
+	Type               KeyType       `json:"type"`
 	Controller         string        `json:"controller"`
 	PublicKeyJwk       *PublicKeyJwk `json:"publicKeyJwk,omitempty"`
 	PublicKeyMultibase *string       `json:"publicKeyMultibase,omitempty"`
@@ -95,7 +95,7 @@ func (vm VerificationMethod) GetPublicKey() (*PubKey, error) {
 		}
 
 		return &PubKey{
-			Type: "ed25519",
+			Type: KeyTypeEd25519,
 			Raw:  []byte(ek),
 		}, nil
 	}

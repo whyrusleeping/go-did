@@ -66,8 +66,8 @@ var registerCmd = &cli.Command{
 		body := &RegisterBody{
 			InitialKey: id,
 			InitialVerification: did.VerificationMethod{
-				ID:   id,
-				Type: "JsonWebKey2020",
+				ID:   id.String(),
+				Type: did.KeyTypeEd25519,
 				//Controller         string        `json:"controller"`
 				PublicKeyJwk: &did.PublicKeyJwk{j},
 			},
@@ -108,7 +108,7 @@ var registerCmd = &cli.Command{
 	},
 }
 
-func loadKey(keyfi string) (ed25519.PrivateKey, error) {
+func loadKey(keyfi string) (*did.PrivKey, error) {
 	data, err := ioutil.ReadFile(keyfi)
 	if err != nil {
 		return nil, err
@@ -120,7 +120,7 @@ func loadKey(keyfi string) (ed25519.PrivateKey, error) {
 	}
 
 	k := ed25519.NewKeyFromSeed(kb)
-	return k, nil
+	return &did.PrivKey{Raw: k, Type: did.KeyTypeEd25519}, nil
 }
 
 func writeDocument(doc did.Document, fname string) error {
