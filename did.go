@@ -16,9 +16,10 @@ const (
 )
 
 type DID struct {
-	raw   string
-	proto string
-	value string
+	raw      string
+	proto    string
+	value    string
+	fragment string
 }
 
 func (d *DID) String() string {
@@ -53,19 +54,35 @@ func (d *DID) Protocol() string {
 }
 
 func ParseDID(s string) (DID, error) {
-	parts := strings.SplitN(s, ":", 3)
-	if len(parts) != 3 {
-		return DID{}, fmt.Errorf("invalid did: must contain three parts")
+	// Fragment only DID
+	if strings.HasPrefix(s, "#") {
+		return DID{
+			raw:      s,
+			fragment: s,
+		}, nil
 	}
 
-	if parts[0] != "did" {
+	dfrag := strings.SplitN(s, "#", 2)
+
+	segm := strings.SplitN(dfrag[0], ":", 3)
+	if len(segm) != 3 {
+		return DID{}, fmt.Errorf("invalid did: must contain three parts: %v", segm)
+	}
+
+	if segm[0] != "did" {
 		return DID{}, fmt.Errorf("invalid did: first segment must be 'did'")
 	}
 
+	var frag string
+	if len(dfrag) == 2 {
+		frag = "#" + dfrag[1]
+	}
+
 	return DID{
-		raw:   s,
-		proto: parts[1],
-		value: parts[2],
+		raw:      s,
+		proto:    segm[1],
+		value:    segm[2],
+		fragment: frag,
 	}, nil
 }
 
