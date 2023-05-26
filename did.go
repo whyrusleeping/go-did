@@ -16,20 +16,36 @@ const (
 )
 
 type DID struct {
-	val   string
+	raw   string
 	proto string
+	value string
 }
 
 func (d *DID) String() string {
-	return d.val
+	return d.raw
+}
+
+func (d *DID) Value() string {
+	return d.value
 }
 
 func (d DID) MarshalJSON() ([]byte, error) {
-	return json.Marshal(d.val)
+	return json.Marshal(d.raw)
 }
 
 func (d *DID) UnmarshalJSON(b []byte) error {
-	return json.Unmarshal(b, &d.val)
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+
+	o, err := ParseDID(s)
+	if err != nil {
+		return err
+	}
+
+	*d = o
+	return nil
 }
 
 func (d *DID) Protocol() string {
@@ -37,7 +53,7 @@ func (d *DID) Protocol() string {
 }
 
 func ParseDID(s string) (DID, error) {
-	parts := strings.Split(s, ":")
+	parts := strings.SplitN(s, ":", 3)
 	if len(parts) != 3 {
 		return DID{}, fmt.Errorf("invalid did: must contain three parts")
 	}
@@ -46,7 +62,11 @@ func ParseDID(s string) (DID, error) {
 		return DID{}, fmt.Errorf("invalid did: first segment must be 'did'")
 	}
 
-	return DID{val: s, proto: parts[1]}, nil
+	return DID{
+		raw:   s,
+		proto: parts[1],
+		value: parts[2],
+	}, nil
 }
 
 type Document struct {
