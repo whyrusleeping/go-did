@@ -22,15 +22,30 @@ const (
 	MCP256      = 0x1200
 	MCSecp256k1 = 0xe7
 )
+
+type KeyType int
+
+func (kt KeyType) String() string {
+	switch kt {
+	case KeyTypeSecp256k1:
+		return "EcdsaSecp256k1VerificationKey2019"
+	case KeyTypeP256:
+		return "EcdsaSecp256r1VerificationKey2019"
+	case KeyTypeEd25519:
+		return "Ed25519VerificationKey2020"		
+	}
+	return "unknown key type"
+}
+
 const (
-	KeyTypeSecp256k1 = "EcdsaSecp256k1VerificationKey2019"
-	KeyTypeP256      = "EcdsaSecp256r1VerificationKey2019"
-	KeyTypeEd25519   = "Ed25519VerificationKey2020"
+	KeyTypeSecp256k1 KeyType = iota
+	KeyTypeP256      
+	KeyTypeEd25519   
 )
 
 type PrivKey struct {
-	Raw  interface{}
-	Type string
+	Raw  any
+	Type KeyType
 }
 
 func (k *PrivKey) Public() *PubKey {
@@ -90,7 +105,7 @@ func (k *PrivKey) Sign(b []byte) ([]byte, error) {
 	}
 }
 
-func (k *PrivKey) KeyType() string {
+func (k *PrivKey) KeyType() KeyType {
 	return k.Type
 }
 
@@ -105,7 +120,7 @@ func varEncode(pref uint64, body []byte) []byte {
 
 type PubKey struct {
 	Raw  any
-	Type string
+	Type KeyType
 }
 
 func (k *PubKey) DID() string {

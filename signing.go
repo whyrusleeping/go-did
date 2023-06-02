@@ -1,9 +1,7 @@
 package did
 
 import (
-	"crypto/ed25519"
 	"crypto/sha256"
-	"fmt"
 )
 
 const (
@@ -23,15 +21,17 @@ type SignedDocument struct {
 	//Sequence  int        `json:"seq"`
 }
 
-func SignDocument(doc *Document, k ed25519.PrivateKey) (*SignedDocument, error) {
+func SignDocument(doc *Document, k *PrivKey) (*SignedDocument, error) {
 	b, err := doc.Serialize()
 	if err != nil {
 		return nil, err
 	}
 
 	h := sha256.Sum256(b)
-
-	sig := ed25519.Sign(k, h[:])
+	sig, err := k.Sign(h[:])
+	if err != nil {
+		return nil, err
+	}
 
 	return &SignedDocument{
 		Document: doc,
@@ -42,16 +42,12 @@ func SignDocument(doc *Document, k ed25519.PrivateKey) (*SignedDocument, error) 
 	}, nil
 }
 
-func VerifyDocumentSignature(sd *SignedDocument, pubk ed25519.PublicKey) error {
+func VerifyDocumentSignature(sd *SignedDocument, pubk *PubKey) error {
 	b, err := sd.Document.Serialize()
 	if err != nil {
 		return err
 	}
 
 	h := sha256.Sum256(b)
-
-	if !ed25519.Verify(pubk, h[:], sd.Signature.Bytes) {
-		return fmt.Errorf("invalid signature")
-	}
-	return nil
+	return pubk.Verify(h[:], sd.Signature.Bytes)
 }
