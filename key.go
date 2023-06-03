@@ -10,11 +10,10 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/multiformats/go-multibase"
-	"github.com/multiformats/go-varint"
+	multibase "github.com/multiformats/go-multibase"
+	varint "github.com/multiformats/go-varint"
 
-	"github.com/ipsn/go-secp256k1"
-	secp "github.com/ipsn/go-secp256k1"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
 const (
@@ -51,13 +50,12 @@ func (k *PrivKey) Public() *PubKey {
 			Raw:  elliptic.Marshal(elliptic.P256(), sk.X, sk.Y),
 		}
 	case KeyTypeSecp256k1:
-		curve := secp.S256()
-		x, y := curve.ScalarBaseMult(k.Raw.([]byte))
-		encPub := elliptic.Marshal(secp.S256(), x, y)
+		sk := k.Raw.(*ecdsa.PrivateKey)
+		pub := sk.Public().(*ecdsa.PublicKey)
 
 		return &PubKey{
 			Type: k.Type,
-			Raw:  encPub,
+			Raw:  pub,
 		}
 	default:
 		panic("invalid key type")
@@ -84,7 +82,16 @@ func (k *PrivKey) Sign(b []byte) ([]byte, error) {
 	case KeyTypeSecp256k1:
 		h := sha256.Sum256(b)
 
-		return secp.Sign(h[:], k.Raw.([]byte))
+		r, s, err := ecdsa.Sign(rand.Reader, k.Raw.(*ecdsa.PrivateKey), h[:])
+		if err != nil {
+			return nil, err
+		}
+		out := make([]byte, 64)
+		copy(out[:32], r.Bytes())
+		copy(out[32:], s.Bytes())
+
+		return out, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported key type: %s", k.Type)
 	}
@@ -184,8 +191,16 @@ func (k *PubKey) Verify(msg, sig []byte) error {
 
 		return nil
 	case KeyTypeSecp256k1:
+		pubk := k.Raw.(*ecdsa.PublicKey)
+
+		r, s, err := parseP256Sig(sig[:64])
+		if err != nil {
+			return err
+		}
+
 		h := sha256.Sum256(msg)
-		if !secp.VerifySignature(k.Raw.([]byte), h[:], sig) {
+
+		if !ecdsa.Verify(pubk, h[:], r, s) {
 			return ErrInvalidSignature
 		}
 
