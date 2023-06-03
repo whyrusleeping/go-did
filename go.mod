@@ -3,7 +3,7 @@ module github.com/whyrusleeping/go-did
 go 1.18
 
 require (
-	github.com/ipsn/go-secp256k1 v0.0.0-20180726113642-9d62b9f0bc52
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0
 	github.com/labstack/echo/v4 v4.7.2
 	github.com/lestrrat-go/jwx/v2 v2.0.0
 	github.com/multiformats/go-multibase v0.0.3
@@ -13,7 +13,6 @@ require (
 
 require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
-	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
 	github.com/goccy/go-json v0.9.7 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/labstack/gommon v0.3.1 // indirect
