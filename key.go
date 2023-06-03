@@ -14,7 +14,6 @@ import (
 	varint "github.com/multiformats/go-varint"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
-	//ecdsa2 "github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
 )
 
 const (
