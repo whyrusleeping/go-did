@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"fmt"
+	"io"
 	"math/big"
 
 	"github.com/multiformats/go-multibase"
@@ -28,7 +29,7 @@ const (
 )
 
 type PrivKey struct {
-	Raw  interface{}
+	Raw  any
 	Type string
 }
 
@@ -97,6 +98,35 @@ func (k *PrivKey) Sign(b []byte) ([]byte, error) {
 
 func (k *PrivKey) KeyType() string {
 	return k.Type
+}
+
+func GeneratePrivKey(rng io.Reader, keyType string) (*PrivKey, error) {
+	ret := &PrivKey{
+		Type: keyType,
+	}
+
+	var err error
+	switch keyType {
+	case KeyTypeP256:
+		if ret.Raw, err = ecdsa.GenerateKey(elliptic.P256(), rng); err != nil {
+			return nil, fmt.Errorf("p256 key generation failed: %w", err)
+		}
+	case KeyTypeEd25519:
+		if _, ret.Raw, err = ed25519.GenerateKey(rng); err != nil {
+			return nil, fmt.Errorf("ed25519 key generation failed: %w", err)
+		}
+	case KeyTypeSecp256k1:
+		var privKey *ecdsa.PrivateKey
+		if privKey, err = ecdsa.GenerateKey(secp.S256(), rng); err != nil {
+			return nil, fmt.Errorf("k256 key generation failed: %w", err)
+		}
+
+		var raw [32]byte
+		ret.Raw = privKey.D.FillBytes(raw[:])
+	default:
+		return nil, fmt.Errorf("unsupported key type: %s", keyType)
+	}
+	return ret, nil
 }
 
 func varEncode(pref uint64, body []byte) []byte {
