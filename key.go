@@ -77,8 +77,8 @@ func (k *PrivKey) Sign(b []byte) ([]byte, error) {
 		}
 
 		out := make([]byte, 64)
-		copy(out[:32], r.Bytes())
-		copy(out[32:], s.Bytes())
+		r.FillBytes(out[:32])
+		s.FillBytes(out[32:])
 
 		return out, nil
 	case KeyTypeSecp256k1:
