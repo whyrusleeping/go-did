@@ -42,7 +42,7 @@ func (k *PrivKey) Public() *PubKey {
 
 		return &PubKey{
 			Type: k.Type,
-			Raw:  pub,
+			Raw:  []byte(pub),
 		}
 	case KeyTypeP256:
 		sk := k.Raw.(*ecdsa.PrivateKey)
@@ -191,7 +191,9 @@ var ErrInvalidSignature = fmt.Errorf("invalid signature")
 func (k *PubKey) Verify(msg, sig []byte) error {
 	switch k.Type {
 	case KeyTypeEd25519:
-		if !ed25519.Verify(k.Raw.(ed25519.PublicKey), msg, sig) {
+		pubk := ed25519.PublicKey(k.Raw.([]byte))
+
+		if !ed25519.Verify(pubk, msg, sig) {
 			return ErrInvalidSignature
 		}
 
@@ -286,7 +288,8 @@ func parseK256Sig(buf []byte) (*secp.Scalar, *secp.Scalar, error) {
 func (k *PrivKey) RawBytes() ([]byte, error) {
 	switch k.Type {
 	case KeyTypeEd25519:
-		return k.Raw.([]byte), nil
+		kb := k.Raw.(ed25519.PrivateKey)
+		return []byte(kb), nil
 	case KeyTypeP256:
 		b, err := x509.MarshalECPrivateKey(k.Raw.(*ecdsa.PrivateKey))
 		if err != nil {
