@@ -14,7 +14,8 @@ import (
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-varint"
 
-	secp "github.com/ipsn/go-secp256k1"
+	secp "gitlab.com/yawning/secp256k1-voi"
+	secpEc "gitlab.com/yawning/secp256k1-voi/secec"
 )
 
 const (
@@ -51,13 +52,11 @@ func (k *PrivKey) Public() *PubKey {
 			Raw:  elliptic.Marshal(elliptic.P256(), sk.X, sk.Y),
 		}
 	case KeyTypeSecp256k1:
-		curve := secp.S256()
-		x, y := curve.ScalarBaseMult(k.Raw.([]byte))
-		encPub := elliptic.Marshal(secp.S256(), x, y)
+		sk := k.Raw.(*secpEc.PrivateKey)
 
 		return &PubKey{
 			Type: k.Type,
-			Raw:  encPub,
+			Raw:  sk.PublicKey().Bytes(),
 		}
 	default:
 		panic("invalid key type")
@@ -84,13 +83,17 @@ func (k *PrivKey) Sign(b []byte) ([]byte, error) {
 	case KeyTypeSecp256k1:
 		h := sha256.Sum256(b)
 
-		sig, err := secp.Sign(h[:], k.Raw.([]byte))
+		sk := k.Raw.(*secpEc.PrivateKey)
+		r, s, _, err := sk.Sign(rand.Reader, h[:])
 		if err != nil {
 			return nil, err
 		}
-		// This secp package's Sign returns `r | s | v`, but VerifySignature
-		// expects `r | s`.
-		return sig[:64], nil
+
+		out := make([]byte, 0, 64)
+		out = append(out, r.Bytes()...)
+		out = append(out, s.Bytes()...)
+
+		return out, nil
 	default:
 		return nil, fmt.Errorf("unsupported key type: %s", k.Type)
 	}
@@ -116,13 +119,9 @@ func GeneratePrivKey(rng io.Reader, keyType string) (*PrivKey, error) {
 			return nil, fmt.Errorf("ed25519 key generation failed: %w", err)
 		}
 	case KeyTypeSecp256k1:
-		var privKey *ecdsa.PrivateKey
-		if privKey, err = ecdsa.GenerateKey(secp.S256(), rng); err != nil {
+		if ret.Raw, err = secpEc.GenerateKey(rng); err != nil {
 			return nil, fmt.Errorf("k256 key generation failed: %w", err)
 		}
-
-		var raw [32]byte
-		ret.Raw = privKey.D.FillBytes(raw[:])
 	default:
 		return nil, fmt.Errorf("unsupported key type: %s", keyType)
 	}
@@ -169,10 +168,12 @@ func (k *PubKey) MultibaseString() string {
 
 		buf = varEncode(MCP256, kb)
 	case KeyTypeSecp256k1:
-		kb, err := convertToCompressed(secp.S256(), k.Raw.([]byte))
+		p, err := secp.NewIdentityPoint().SetUncompressedBytes(k.Raw.([]byte))
 		if err != nil {
 			return "<invalid key>"
 		}
+		kb := p.CompressedBytes()
+
 		buf = varEncode(MCSecp256k1, kb)
 	default:
 		return "<invalid key type>"
@@ -219,8 +220,27 @@ func (k *PubKey) Verify(msg, sig []byte) error {
 
 		return nil
 	case KeyTypeSecp256k1:
+		pubk, err := secpEc.NewPublicKey(k.Raw.([]byte))
+		if err != nil {
+			return fmt.Errorf("pubkey was invalid")
+		}
+
+		r, s, err := parseK256Sig(sig)
+		if err != nil {
+			return err
+		}
+
 		h := sha256.Sum256(msg)
-		if !secp.VerifySignature(k.Raw.([]byte), h[:], sig) {
+
+		// Checking `s <= n/2` to prevent signature mallability is not
+		// part of SEC 1, Version 2.0.  libsecp256k1 which used to be
+		// used by this package, includes the check, so retain behavior
+		// compatibility.
+		if s.IsGreaterThanHalfN() != 0 {
+			return ErrInvalidSignature
+		}
+
+		if !pubk.Verify(h[:], r, s) {
 			return ErrInvalidSignature
 		}
 
@@ -245,6 +265,24 @@ func parseP256Sig(buf []byte) (*big.Int, *big.Int, error) {
 	return r, s, nil
 }
 
+func parseK256Sig(buf []byte) (*secp.Scalar, *secp.Scalar, error) {
+	if len(buf) != 2*secp.ScalarSize {
+		return nil, nil, fmt.Errorf("k256 signatures must be 64 bytes")
+	}
+
+	r, err := secp.NewScalarFromCanonicalBytes((*[secp.ScalarSize]byte)(buf[:32]))
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid k256 signature r: %w", err)
+	}
+
+	s, err := secp.NewScalarFromCanonicalBytes((*[secp.ScalarSize]byte)(buf[32:]))
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid k256 signature s: %w", err)
+	}
+
+	return r, s, nil
+}
+
 func (k *PrivKey) RawBytes() ([]byte, error) {
 	switch k.Type {
 	case KeyTypeEd25519:
@@ -257,7 +295,7 @@ func (k *PrivKey) RawBytes() ([]byte, error) {
 
 		return b, nil
 	case KeyTypeSecp256k1:
-		return k.Raw.([]byte), nil
+		return k.Raw.(*secpEc.PrivateKey).Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unsupported key type: %q", k.Type)
 	}

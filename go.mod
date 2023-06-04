@@ -3,12 +3,12 @@ module github.com/whyrusleeping/go-did
 go 1.18
 
 require (
-	github.com/ipsn/go-secp256k1 v0.0.0-20180726113642-9d62b9f0bc52
 	github.com/labstack/echo/v4 v4.7.2
 	github.com/lestrrat-go/jwx/v2 v2.0.0
 	github.com/multiformats/go-multibase v0.0.3
 	github.com/multiformats/go-varint v0.0.7
 	github.com/urfave/cli/v2 v2.5.0
+	gitlab.com/yawning/secp256k1-voi v0.0.0-20230605031528-ac15b89fa4bd
 )
 
 require (
@@ -30,9 +30,9 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.1 // indirect
-	golang.org/x/crypto v0.0.0-20220214200702-86341886e292 // indirect
-	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2 // indirect
-	golang.org/x/sys v0.0.0-20211103235746-7861aae1554b // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/crypto v0.9.0 // indirect
+	golang.org/x/net v0.10.0 // indirect
+	golang.org/x/sys v0.8.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/time v0.0.0-20201208040808-7e3f01d25324 // indirect
 )
