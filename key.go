@@ -13,7 +13,6 @@ import (
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-varint"
 
-	"github.com/ipsn/go-secp256k1"
 	secp "github.com/ipsn/go-secp256k1"
 )
 
@@ -84,7 +83,13 @@ func (k *PrivKey) Sign(b []byte) ([]byte, error) {
 	case KeyTypeSecp256k1:
 		h := sha256.Sum256(b)
 
-		return secp.Sign(h[:], k.Raw.([]byte))
+		sig, err := secp.Sign(h[:], k.Raw.([]byte))
+		if err != nil {
+			return nil, err
+		}
+		// This secp package's Sign returns `r | s | v`, but VerifySignature
+		// expects `r | s`.
+		return sig[:64], nil
 	default:
 		return nil, fmt.Errorf("unsupported key type: %s", k.Type)
 	}
@@ -134,7 +139,7 @@ func (k *PubKey) MultibaseString() string {
 
 		buf = varEncode(MCP256, kb)
 	case KeyTypeSecp256k1:
-		kb, err := convertToCompressed(secp256k1.S256(), k.Raw.([]byte))
+		kb, err := convertToCompressed(secp.S256(), k.Raw.([]byte))
 		if err != nil {
 			return "<invalid key>"
 		}
