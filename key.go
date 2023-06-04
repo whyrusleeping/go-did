@@ -29,6 +29,12 @@ const (
 	KeyTypeEd25519   = "Ed25519VerificationKey2020"
 )
 
+var varPrefixMap = map[string]uint64{
+	KeyTypeSecp256k1: MCSecp256k1,
+	KeyTypeP256:      MCP256,
+	KeyTypeEd25519:   MCed25519,
+}
+
 type PrivKey struct {
 	Raw  any
 	Type string
@@ -137,6 +143,14 @@ func varEncode(pref uint64, body []byte) []byte {
 	return buf
 }
 
+func varDecode(buf []byte) (uint64, []byte, error) {
+	prefix, left, err := varint.FromUvarint(buf)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to read prefix: %w", err)
+	}
+	return prefix, buf[left:], nil
+}
+
 type PubKey struct {
 	Raw  any
 	Type string
@@ -156,28 +170,28 @@ func convertToCompressed(curve elliptic.Curve, k []byte) ([]byte, error) {
 }
 
 func (k *PubKey) MultibaseString() string {
-	var buf []byte
+	prefix, ok := varPrefixMap[k.Type]
+	if !ok {
+		return "<invalid key type>"
+	}
+
+	var kb []byte
 	switch k.Type {
 	case KeyTypeEd25519:
-		buf = varEncode(MCed25519, k.Raw.([]byte))
+		kb = k.Raw.([]byte)
 	case KeyTypeP256:
-		kb, err := convertToCompressed(elliptic.P256(), k.Raw.([]byte))
-		if err != nil {
+		var err error
+		if kb, err = convertToCompressed(elliptic.P256(), k.Raw.([]byte)); err != nil {
 			return "<invalid key>"
 		}
-
-		buf = varEncode(MCP256, kb)
 	case KeyTypeSecp256k1:
 		p, err := secp.NewIdentityPoint().SetUncompressedBytes(k.Raw.([]byte))
 		if err != nil {
 			return "<invalid key>"
 		}
-		kb := p.CompressedBytes()
-
-		buf = varEncode(MCSecp256k1, kb)
-	default:
-		return "<invalid key type>"
+		kb = p.CompressedBytes()
 	}
+	buf := varEncode(prefix, kb)
 
 	kstr, err := multibase.Encode(multibase.Base58BTC, buf)
 	if err != nil {
@@ -310,13 +324,42 @@ func KeyFromMultibase(vm VerificationMethod) (*PubKey, error) {
 		return nil, err
 	}
 
+	var raw []byte
 	switch vm.Type {
 	case KeyTypeEd25519, KeyTypeSecp256k1, KeyTypeP256:
-		return &PubKey{
-			Type: vm.Type,
-			Raw:  data,
-		}, nil
+		var (
+			prefix uint64
+			err    error
+		)
+		if prefix, raw, err = varDecode(data); err != nil {
+			return nil, err
+		}
+		if varPrefixMap[vm.Type] != prefix {
+			return nil, fmt.Errorf("invalid key multicodec prefix: %x", prefix)
+		}
 	default:
 		return nil, fmt.Errorf("unrecognized key multicodec: %q", vm.Type)
 	}
+
+	// PubKey expects the uncompressed point, but the multibase string
+	// uses point compression when available.
+	switch vm.Type {
+	case KeyTypeSecp256k1:
+		pub, err := secpEc.NewPublicKey(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid k256 public key: %w", err)
+		}
+		raw = pub.Bytes()
+	case KeyTypeP256:
+		x, y := elliptic.UnmarshalCompressed(elliptic.P256(), raw)
+		if x == nil {
+			return nil, fmt.Errorf("invalid p256 public key")
+		}
+		raw = elliptic.Marshal(elliptic.P256(), x, y)
+	}
+
+	return &PubKey{
+		Type: vm.Type,
+		Raw:  raw,
+	}, nil
 }
