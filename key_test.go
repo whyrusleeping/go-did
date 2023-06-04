@@ -1,7 +1,7 @@
 package did
 
 import (
-	"bytes"
+	"crypto"
 	"crypto/rand"
 	"testing"
 )
@@ -10,6 +10,10 @@ var allKeyTypes = []string{
 	KeyTypeSecp256k1,
 	KeyTypeP256,
 	KeyTypeEd25519,
+}
+
+type equalAble interface {
+	Equal(x crypto.PublicKey) bool
 }
 
 func TestKey(t *testing.T) {
@@ -71,14 +75,14 @@ func TestKey(t *testing.T) {
 					t.Fatalf("public key type did not round-trip: got %s, expected %s", pk2.Type, pk.Type)
 				}
 
-				pkB, pk2B := pk.Raw.([]byte), pk2.Raw.([]byte)
-				if !bytes.Equal(pkB, pk2B) {
-					t.Fatalf("public key raw did not round-trip: got %x, expected %x", pk2B, pkB)
-				}
-
 				pkDID, pk2DID := pk.DID(), pk2.DID()
 				if pkDID != pk2DID {
 					t.Fatalf("public key DID did not round-trip: got %s, expected %s", pk2DID, pkDID)
+				}
+
+				pkRaw, pk2Raw := pk.Raw.(equalAble), pk2.Raw.(crypto.PublicKey)
+				if !pkRaw.Equal(pk2Raw) {
+					t.Fatalf("public key raw did not round-trip: got %s, expected %s", pk2Raw, pkRaw)
 				}
 			})
 		}

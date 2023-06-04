@@ -43,26 +43,25 @@ type PrivKey struct {
 func (k *PrivKey) Public() *PubKey {
 	switch k.Type {
 	case KeyTypeEd25519:
-		kb := k.Raw.(ed25519.PrivateKey)
-		pub := kb.Public().(ed25519.PublicKey)
+		sk := k.Raw.(ed25519.PrivateKey)
 
 		return &PubKey{
 			Type: k.Type,
-			Raw:  []byte(pub),
+			Raw:  sk.Public().(ed25519.PublicKey),
 		}
 	case KeyTypeP256:
 		sk := k.Raw.(*ecdsa.PrivateKey)
 
 		return &PubKey{
 			Type: k.Type,
-			Raw:  elliptic.Marshal(elliptic.P256(), sk.X, sk.Y),
+			Raw:  sk.Public().(*ecdsa.PublicKey),
 		}
 	case KeyTypeSecp256k1:
 		sk := k.Raw.(*secpEc.PrivateKey)
 
 		return &PubKey{
 			Type: k.Type,
-			Raw:  sk.PublicKey().Bytes(),
+			Raw:  sk.PublicKey(),
 		}
 	default:
 		panic("invalid key type")
@@ -75,7 +74,7 @@ func (k *PrivKey) Sign(b []byte) ([]byte, error) {
 		return ed25519.Sign(k.Raw.(ed25519.PrivateKey), b), nil
 	case KeyTypeP256:
 		h := sha256.Sum256(b)
-		//return ecdsa.SignASN1(rand.Reader, k.Raw.(*ecdsa.PrivateKey), h[:])
+
 		r, s, err := ecdsa.Sign(rand.Reader, k.Raw.(*ecdsa.PrivateKey), h[:])
 		if err != nil {
 			return nil, err
@@ -160,15 +159,6 @@ func (k *PubKey) DID() string {
 	return "did:key:" + k.MultibaseString()
 }
 
-func convertToCompressed(curve elliptic.Curve, k []byte) ([]byte, error) {
-	x, y := elliptic.Unmarshal(curve, k)
-	if x == nil {
-		return nil, fmt.Errorf("invalid key")
-	}
-
-	return elliptic.MarshalCompressed(curve, x, y), nil
-}
-
 func (k *PubKey) MultibaseString() string {
 	prefix, ok := varPrefixMap[k.Type]
 	if !ok {
@@ -178,15 +168,17 @@ func (k *PubKey) MultibaseString() string {
 	var kb []byte
 	switch k.Type {
 	case KeyTypeEd25519:
-		kb = k.Raw.([]byte)
+		kb = []byte(k.Raw.(ed25519.PublicKey))
 	case KeyTypeP256:
-		var err error
-		if kb, err = convertToCompressed(elliptic.P256(), k.Raw.([]byte)); err != nil {
+		pk := k.Raw.(*ecdsa.PublicKey)
+		if !pk.Curve.IsOnCurve(pk.X, pk.Y) {
 			return "<invalid key>"
 		}
+		kb = elliptic.MarshalCompressed(pk.Curve, pk.X, pk.Y)
 	case KeyTypeSecp256k1:
-		p, err := secp.NewIdentityPoint().SetUncompressedBytes(k.Raw.([]byte))
-		if err != nil {
+		pk := k.Raw.(*secpEc.PublicKey)
+		p := pk.Point()
+		if p.IsIdentity() != 0 {
 			return "<invalid key>"
 		}
 		kb = p.CompressedBytes()
@@ -205,24 +197,15 @@ var ErrInvalidSignature = fmt.Errorf("invalid signature")
 func (k *PubKey) Verify(msg, sig []byte) error {
 	switch k.Type {
 	case KeyTypeEd25519:
-		pubk := ed25519.PublicKey(k.Raw.([]byte))
+		pk := k.Raw.(ed25519.PublicKey)
 
-		if !ed25519.Verify(pubk, msg, sig) {
+		if !ed25519.Verify(pk, msg, sig) {
 			return ErrInvalidSignature
 		}
 
 		return nil
 	case KeyTypeP256:
-		x, y := elliptic.Unmarshal(elliptic.P256(), k.Raw.([]byte))
-		if x == nil {
-			return fmt.Errorf("pubkey was invalid")
-		}
-
-		pubk := &ecdsa.PublicKey{
-			Curve: elliptic.P256(),
-			X:     x,
-			Y:     y,
-		}
+		pk := k.Raw.(*ecdsa.PublicKey)
 
 		r, s, err := parseP256Sig(sig)
 		if err != nil {
@@ -230,16 +213,13 @@ func (k *PubKey) Verify(msg, sig []byte) error {
 		}
 
 		h := sha256.Sum256(msg)
-		if !ecdsa.Verify(pubk, h[:], r, s) {
+		if !ecdsa.Verify(pk, h[:], r, s) {
 			return ErrInvalidSignature
 		}
 
 		return nil
 	case KeyTypeSecp256k1:
-		pubk, err := secpEc.NewPublicKey(k.Raw.([]byte))
-		if err != nil {
-			return fmt.Errorf("pubkey was invalid")
-		}
+		pk := k.Raw.(*secpEc.PublicKey)
 
 		r, s, err := parseK256Sig(sig)
 		if err != nil {
@@ -256,7 +236,7 @@ func (k *PubKey) Verify(msg, sig []byte) error {
 			return ErrInvalidSignature
 		}
 
-		if !pubk.Verify(h[:], r, s) {
+		if !pk.Verify(h[:], r, s) {
 			return ErrInvalidSignature
 		}
 
@@ -305,12 +285,12 @@ func (k *PrivKey) RawBytes() ([]byte, error) {
 		kb := k.Raw.(ed25519.PrivateKey)
 		return []byte(kb), nil
 	case KeyTypeP256:
-		b, err := x509.MarshalECPrivateKey(k.Raw.(*ecdsa.PrivateKey))
+		kb, err := x509.MarshalECPrivateKey(k.Raw.(*ecdsa.PrivateKey))
 		if err != nil {
 			return nil, err
 		}
 
-		return b, nil
+		return kb, nil
 	case KeyTypeSecp256k1:
 		return k.Raw.(*secpEc.PrivateKey).Bytes(), nil
 	default:
@@ -322,6 +302,10 @@ func KeyFromMultibase(vm VerificationMethod) (*PubKey, error) {
 	_, data, err := multibase.Decode(*vm.PublicKeyMultibase)
 	if err != nil {
 		return nil, err
+	}
+
+	pk := &PubKey{
+		Type: vm.Type,
 	}
 
 	var raw []byte
@@ -341,25 +325,28 @@ func KeyFromMultibase(vm VerificationMethod) (*PubKey, error) {
 		return nil, fmt.Errorf("unrecognized key multicodec: %q", vm.Type)
 	}
 
-	// PubKey expects the uncompressed point, but the multibase string
-	// uses point compression when available.
+	// Convert from the binary encoding of the compressed point,
+	// to the actual concrete public key type.
 	switch vm.Type {
+	case KeyTypeEd25519:
+		pk.Raw = ed25519.PublicKey(raw)
 	case KeyTypeSecp256k1:
 		pub, err := secpEc.NewPublicKey(raw)
 		if err != nil {
 			return nil, fmt.Errorf("invalid k256 public key: %w", err)
 		}
-		raw = pub.Bytes()
+		pk.Raw = pub
 	case KeyTypeP256:
 		x, y := elliptic.UnmarshalCompressed(elliptic.P256(), raw)
 		if x == nil {
 			return nil, fmt.Errorf("invalid p256 public key")
 		}
-		raw = elliptic.Marshal(elliptic.P256(), x, y)
+		pk.Raw = &ecdsa.PublicKey{
+			Curve: elliptic.P256(),
+			X:     x,
+			Y:     y,
+		}
 	}
 
-	return &PubKey{
-		Type: vm.Type,
-		Raw:  raw,
-	}, nil
+	return pk, nil
 }
