@@ -74,11 +74,7 @@ func TestKey(t *testing.T) {
 				// Roundtrip Multibase encoding.
 				pkStr := pk.MultibaseString()
 
-				vm := VerificationMethod{
-					Type:               keyType,
-					PublicKeyMultibase: &pkStr,
-				}
-				pk2, err := KeyFromMultibase(vm)
+				pk2, err := PubKeyFromMultibaseString(pkStr)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -95,6 +91,20 @@ func TestKey(t *testing.T) {
 				pkRaw, pk2Raw := pk.Raw.(pubEqualAble), pk2.Raw.(crypto.PublicKey)
 				if !pkRaw.Equal(pk2Raw) {
 					t.Fatalf("public key raw did not round-trip: got %+v, expected %+v", pk2Raw, pkRaw)
+				}
+
+				// Roundtrip Multibase VM encoding.
+				vm := VerificationMethod{
+					Type:               keyType,
+					PublicKeyMultibase: &pkStr,
+				}
+				pk3, err := vm.GetPublicKey()
+				if err != nil {
+					t.Fatal(err)
+				}
+				pk3Raw := pk3.Raw.(crypto.PublicKey)
+				if !pkRaw.Equal(pk3Raw) {
+					t.Fatalf("public key raw did not round-trip (VM): got %+v, expected %+v", pk3Raw, pkRaw)
 				}
 			})
 		}

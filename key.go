@@ -32,7 +32,13 @@ const (
 var (
 	ErrInvalidSignature = fmt.Errorf("invalid signature")
 
-	varPrefixMap = map[string]uint64{
+	mcToType = map[uint64]string{
+		MCed25519:   KeyTypeEd25519,
+		MCP256:      KeyTypeP256,
+		MCSecp256k1: KeyTypeSecp256k1,
+	}
+
+	typeToMc = map[string]uint64{
 		KeyTypeSecp256k1: MCSecp256k1,
 		KeyTypeP256:      MCP256,
 		KeyTypeEd25519:   MCed25519,
@@ -187,23 +193,6 @@ func GeneratePrivKey(rng io.Reader, keyType string) (*PrivKey, error) {
 	return ret, nil
 }
 
-func varEncode(pref uint64, body []byte) []byte {
-	buf := make([]byte, 8+len(body))
-	n := varint.PutUvarint(buf, pref)
-	copy(buf[n:], body)
-	buf = buf[:n+len(body)]
-
-	return buf
-}
-
-func varDecode(buf []byte) (uint64, []byte, error) {
-	prefix, left, err := varint.FromUvarint(buf)
-	if err != nil {
-		return 0, nil, fmt.Errorf("failed to read prefix: %w", err)
-	}
-	return prefix, buf[left:], nil
-}
-
 type PubKey struct {
 	Raw  any
 	Type string
@@ -214,7 +203,7 @@ func (k *PubKey) DID() string {
 }
 
 func (k *PubKey) MultibaseString() string {
-	prefix, ok := varPrefixMap[k.Type]
+	prefix, ok := typeToMc[k.Type]
 	if !ok {
 		return "<invalid key type>"
 	}
@@ -299,68 +288,29 @@ func (k *PubKey) Verify(msg, sig []byte) error {
 	}
 }
 
-func parseP256Sig(buf []byte) (*big.Int, *big.Int, error) {
-	if len(buf) != 64 {
-		return nil, nil, fmt.Errorf("p256 signatures must be 64 bytes")
-	}
-
-	r := big.NewInt(0)
-	s := big.NewInt(0)
-
-	r.SetBytes(buf[:32])
-	s.SetBytes(buf[32:])
-
-	return r, s, nil
-}
-
-func parseK256Sig(buf []byte) (*secp.Scalar, *secp.Scalar, error) {
-	if len(buf) != 2*secp.ScalarSize {
-		return nil, nil, fmt.Errorf("k256 signatures must be 64 bytes")
-	}
-
-	r, err := secp.NewScalarFromCanonicalBytes((*[secp.ScalarSize]byte)(buf[:32]))
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid k256 signature r: %w", err)
-	}
-
-	s, err := secp.NewScalarFromCanonicalBytes((*[secp.ScalarSize]byte)(buf[32:]))
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid k256 signature s: %w", err)
-	}
-
-	return r, s, nil
-}
-
-func KeyFromMultibase(vm VerificationMethod) (*PubKey, error) {
-	_, data, err := multibase.Decode(*vm.PublicKeyMultibase)
+func PubKeyFromMultibaseString(s string) (*PubKey, error) {
+	_, data, err := multibase.Decode(s)
 	if err != nil {
 		return nil, err
 	}
 
-	pk := &PubKey{
-		Type: vm.Type,
+	prefix, raw, err := varDecode(data)
+	if err != nil {
+		return nil, err
 	}
 
-	var raw []byte
-	switch vm.Type {
-	case KeyTypeEd25519, KeyTypeSecp256k1, KeyTypeP256:
-		var (
-			prefix uint64
-			err    error
-		)
-		if prefix, raw, err = varDecode(data); err != nil {
-			return nil, err
-		}
-		if varPrefixMap[vm.Type] != prefix {
-			return nil, fmt.Errorf("invalid key multicodec prefix: %x", prefix)
-		}
-	default:
-		return nil, fmt.Errorf("unrecognized key multicodec: %q", vm.Type)
+	kt, ok := mcToType[prefix]
+	if !ok {
+		return nil, fmt.Errorf("invalid key multicodec prefix: %x", prefix)
+	}
+
+	pk := &PubKey{
+		Type: kt,
 	}
 
 	// Convert from the binary encoding of the compressed point,
 	// to the actual concrete public key type.
-	switch vm.Type {
+	switch kt {
 	case KeyTypeEd25519:
 		// The stdlib does not expose a way to check if the public key
 		// is actually valid, but we can at least check the length.
@@ -396,4 +346,53 @@ func KeyFromMultibase(vm VerificationMethod) (*PubKey, error) {
 	}
 
 	return pk, nil
+}
+
+func parseP256Sig(buf []byte) (*big.Int, *big.Int, error) {
+	if len(buf) != 64 {
+		return nil, nil, fmt.Errorf("p256 signatures must be 64 bytes")
+	}
+
+	r := big.NewInt(0)
+	s := big.NewInt(0)
+
+	r.SetBytes(buf[:32])
+	s.SetBytes(buf[32:])
+
+	return r, s, nil
+}
+
+func parseK256Sig(buf []byte) (*secp.Scalar, *secp.Scalar, error) {
+	if len(buf) != 2*secp.ScalarSize {
+		return nil, nil, fmt.Errorf("k256 signatures must be 64 bytes")
+	}
+
+	r, err := secp.NewScalarFromCanonicalBytes((*[secp.ScalarSize]byte)(buf[:32]))
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid k256 signature r: %w", err)
+	}
+
+	s, err := secp.NewScalarFromCanonicalBytes((*[secp.ScalarSize]byte)(buf[32:]))
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid k256 signature s: %w", err)
+	}
+
+	return r, s, nil
+}
+
+func varEncode(pref uint64, body []byte) []byte {
+	buf := make([]byte, 8+len(body))
+	n := varint.PutUvarint(buf, pref)
+	copy(buf[n:], body)
+	buf = buf[:n+len(body)]
+
+	return buf
+}
+
+func varDecode(buf []byte) (uint64, []byte, error) {
+	prefix, left, err := varint.FromUvarint(buf)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to read prefix: %w", err)
+	}
+	return prefix, buf[left:], nil
 }
