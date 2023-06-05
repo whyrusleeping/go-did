@@ -303,6 +303,39 @@ func (k *PubKey) Verify(msg, sig []byte) error {
 	}
 }
 
+func PubKeyFromCrypto(k crypto.PublicKey) (*PubKey, error) {
+	var pk PubKey
+	switch k := k.(type) {
+	case ed25519.PublicKey:
+		if len(k) != ed25519.PublicKeySize {
+			return nil, fmt.Errorf("invalid ed25519 public key")
+		}
+
+		pk.Type = KeyTypeEd25519
+		pk.Raw = ed25519.PublicKey(append([]byte{}, k...))
+	case *ecdsa.PublicKey:
+		if k.Curve != elliptic.P256() {
+			return nil, fmt.Errorf("invalid p256 public key: wrong curve")
+		}
+		if !k.Curve.IsOnCurve(k.X, k.Y) {
+			return nil, fmt.Errorf("invalid p256 public key: not on curve")
+		}
+
+		pk.Type = KeyTypeP256
+		pk.Raw = &ecdsa.PublicKey{
+			Curve: k.Curve,
+			X:     (&big.Int{}).Set(k.X),
+			Y:     (&big.Int{}).Set(k.Y),
+		}
+	case *secpEc.PublicKey:
+		pk.Type = KeyTypeSecp256k1
+		pk.Raw = k // secp256k1-voi PublicKeys are immutable
+	default:
+		return nil, fmt.Errorf("unrecognized key type: %T", k)
+	}
+	return &pk, nil
+}
+
 func PubKeyFromDIDString(s string) (*PubKey, error) {
 	if !strings.HasPrefix(s, didKeyPrefix) {
 		return nil, fmt.Errorf("string is not a DID key")
@@ -370,6 +403,39 @@ func PubKeyFromMultibaseString(s string) (*PubKey, error) {
 	}
 
 	return pk, nil
+}
+
+func DIDFromKey(k any) (DID, error) {
+	ck, ok := k.(crypto.PublicKey)
+	if !ok {
+		return DID{}, fmt.Errorf("unrecognized key type: %T", k)
+	}
+
+	pubKey, err := PubKeyFromCrypto(ck)
+	if err != nil {
+		return DID{}, err
+	}
+
+	// WARNING BUG BUG BUG BUG BUG
+	//
+	// The old version of this routine (that only supported Ed25519)
+	// is inconsistent with the rest of the code about how Ed25519
+	// DIDs should be constructed.
+	//
+	// - didFromEd25519 prepended the prefix `0xed` as a byte.
+	// - PubKey.MultibaseString prepends the prefix as a Uvarint.
+	//
+	// This assumes that the more generic behavior is correct, but
+	// if people need backward compatibility, those that care, are
+	// about to be very sad.
+
+	id, err := ParseDID(pubKey.DID())
+	if err != nil {
+		// This is probably an invariant violation...
+		return DID{}, err
+	}
+
+	return id, nil
 }
 
 func parseP256Sig(buf []byte) (*big.Int, *big.Int, error) {

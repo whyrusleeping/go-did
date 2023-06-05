@@ -95,12 +95,24 @@ func TestKey(t *testing.T) {
 				//
 				// TODO: Generate known-good DID test vectors for all the
 				// key types and also test.
-				pk4, err := PubKeyFromDIDString(pk.DID())
+				pkDID := pk.DID()
+				pk4, err := PubKeyFromDIDString(pkDID)
 				if err != nil {
 					t.Fatal(err)
 				}
 				if !pk.Equal(pk4) {
 					t.Fatalf("public key did not round-trip: got %+v, expected %+v", pk4, pk)
+				}
+
+				// Test generic DID from library key
+				pkRaw := pk.Raw.(crypto.PublicKey)
+				did, err := DIDFromKey(pkRaw)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if didStr := did.String(); didStr != pkDID {
+					t.Fatalf("did mismatch: got %+v, expected %+v", didStr, pkDID)
 				}
 			})
 		}
