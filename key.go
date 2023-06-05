@@ -162,7 +162,7 @@ func PrivKeyFromRawBytes(keyType string, raw []byte) (*PrivKey, error) {
 		if len(raw) != ed25519.PrivateKeySize {
 			return nil, fmt.Errorf("invalid ed25519 private key")
 		}
-		ret.Raw = ed25519.PrivateKey(raw)
+		ret.Raw = ed25519.PrivateKey(append([]byte{}, raw...))
 	case KeyTypeSecp256k1:
 		var err error
 		if ret.Raw, err = secpEc.NewPrivateKey(raw); err != nil {
