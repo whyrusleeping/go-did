@@ -1,6 +1,7 @@
 package did
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -44,6 +45,10 @@ var (
 		KeyTypeEd25519:   MCed25519,
 	}
 )
+
+type cryptoPublicKeyEqualAble interface {
+	Equal(x crypto.PublicKey) bool
+}
 
 type PrivKey struct {
 	Raw  any
@@ -196,6 +201,14 @@ func GeneratePrivKey(rng io.Reader, keyType string) (*PrivKey, error) {
 type PubKey struct {
 	Raw  any
 	Type string
+}
+
+func (k *PubKey) Equal(x *PubKey) bool {
+	if k.Type != x.Type {
+		return false
+	}
+	cmp, other := k.Raw.(cryptoPublicKeyEqualAble), x.Raw.(crypto.PublicKey)
+	return cmp.Equal(other)
 }
 
 func (k *PubKey) DID() string {
