@@ -29,11 +29,15 @@ const (
 	KeyTypeEd25519   = "Ed25519VerificationKey2020"
 )
 
-var varPrefixMap = map[string]uint64{
-	KeyTypeSecp256k1: MCSecp256k1,
-	KeyTypeP256:      MCP256,
-	KeyTypeEd25519:   MCed25519,
-}
+var (
+	ErrInvalidSignature = fmt.Errorf("invalid signature")
+
+	varPrefixMap = map[string]uint64{
+		KeyTypeSecp256k1: MCSecp256k1,
+		KeyTypeP256:      MCP256,
+		KeyTypeEd25519:   MCed25519,
+	}
+)
 
 type PrivKey struct {
 	Raw  any
@@ -106,6 +110,56 @@ func (k *PrivKey) Sign(b []byte) ([]byte, error) {
 
 func (k *PrivKey) KeyType() string {
 	return k.Type
+}
+
+func (k *PrivKey) RawBytes() ([]byte, error) {
+	switch k.Type {
+	case KeyTypeEd25519:
+		kb := k.Raw.(ed25519.PrivateKey)
+		return []byte(kb), nil
+	case KeyTypeP256:
+		kb, err := x509.MarshalECPrivateKey(k.Raw.(*ecdsa.PrivateKey))
+		if err != nil {
+			return nil, err
+		}
+		return kb, nil
+	case KeyTypeSecp256k1:
+		return k.Raw.(*secpEc.PrivateKey).Bytes(), nil
+	default:
+		return nil, fmt.Errorf("unsupported key type: %q", k.Type)
+	}
+}
+
+func PrivKeyFromRawBytes(keyType string, raw []byte) (*PrivKey, error) {
+	ret := &PrivKey{
+		Type: keyType,
+	}
+
+	switch keyType {
+	case KeyTypeP256:
+		k, err := x509.ParseECPrivateKey(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid p256 private key: %w", err)
+		}
+		if k.Curve != elliptic.P256() {
+			return nil, fmt.Errorf("invalid p256 private key: wrong curve")
+		}
+		ret.Raw = k
+	case KeyTypeEd25519:
+		if len(raw) != ed25519.PrivateKeySize {
+			return nil, fmt.Errorf("invalid ed25519 private key")
+		}
+		ret.Raw = ed25519.PrivateKey(raw)
+	case KeyTypeSecp256k1:
+		var err error
+		if ret.Raw, err = secpEc.NewPrivateKey(raw); err != nil {
+			return nil, fmt.Errorf("invalid k256 private key: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported key type: %s", keyType)
+	}
+
+	return ret, nil
 }
 
 func GeneratePrivKey(rng io.Reader, keyType string) (*PrivKey, error) {
@@ -192,8 +246,6 @@ func (k *PubKey) MultibaseString() string {
 	return kstr
 }
 
-var ErrInvalidSignature = fmt.Errorf("invalid signature")
-
 func (k *PubKey) Verify(msg, sig []byte) error {
 	switch k.Type {
 	case KeyTypeEd25519:
@@ -277,25 +329,6 @@ func parseK256Sig(buf []byte) (*secp.Scalar, *secp.Scalar, error) {
 	}
 
 	return r, s, nil
-}
-
-func (k *PrivKey) RawBytes() ([]byte, error) {
-	switch k.Type {
-	case KeyTypeEd25519:
-		kb := k.Raw.(ed25519.PrivateKey)
-		return []byte(kb), nil
-	case KeyTypeP256:
-		kb, err := x509.MarshalECPrivateKey(k.Raw.(*ecdsa.PrivateKey))
-		if err != nil {
-			return nil, err
-		}
-
-		return kb, nil
-	case KeyTypeSecp256k1:
-		return k.Raw.(*secpEc.PrivateKey).Bytes(), nil
-	default:
-		return nil, fmt.Errorf("unsupported key type: %q", k.Type)
-	}
 }
 
 func KeyFromMultibase(vm VerificationMethod) (*PubKey, error) {
