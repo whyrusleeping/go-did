@@ -90,6 +90,18 @@ func TestKey(t *testing.T) {
 				if !pk.Equal(pk3) {
 					t.Fatalf("public key did not round-trip: got %+v, expected %+v", pk3, pk)
 				}
+
+				// Roundtrip DID encoding.
+				//
+				// TODO: Generate known-good DID test vectors for all the
+				// key types and also test.
+				pk4, err := PubKeyFromDIDString(pk.DID())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !pk.Equal(pk4) {
+					t.Fatalf("public key did not round-trip: got %+v, expected %+v", pk4, pk)
+				}
 			})
 		}
 	})

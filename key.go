@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"strings"
 
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-varint"
@@ -23,11 +24,12 @@ const (
 	MCed25519   = 0xED
 	MCP256      = 0x1200
 	MCSecp256k1 = 0xe7
-)
-const (
+
 	KeyTypeSecp256k1 = "EcdsaSecp256k1VerificationKey2019"
 	KeyTypeP256      = "EcdsaSecp256r1VerificationKey2019"
 	KeyTypeEd25519   = "Ed25519VerificationKey2020"
+
+	didKeyPrefix = "did:key:"
 )
 
 var (
@@ -212,7 +214,7 @@ func (k *PubKey) Equal(x *PubKey) bool {
 }
 
 func (k *PubKey) DID() string {
-	return "did:key:" + k.MultibaseString()
+	return didKeyPrefix + k.MultibaseString()
 }
 
 func (k *PubKey) MultibaseString() string {
@@ -299,6 +301,15 @@ func (k *PubKey) Verify(msg, sig []byte) error {
 		return fmt.Errorf("unsupported key type: %q", k.Type)
 
 	}
+}
+
+func PubKeyFromDIDString(s string) (*PubKey, error) {
+	if !strings.HasPrefix(s, didKeyPrefix) {
+		return nil, fmt.Errorf("string is not a DID key")
+	}
+	s = strings.TrimPrefix(s, didKeyPrefix)
+
+	return PubKeyFromMultibaseString(s)
 }
 
 func PubKeyFromMultibaseString(s string) (*PubKey, error) {
