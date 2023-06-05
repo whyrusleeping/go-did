@@ -329,9 +329,23 @@ func KeyFromMultibase(vm VerificationMethod) (*PubKey, error) {
 	// to the actual concrete public key type.
 	switch vm.Type {
 	case KeyTypeEd25519:
+		// The stdlib does not expose a way to check if the public key
+		// is actually valid, but we can at least check the length.
+		if len(raw) != ed25519.PublicKeySize {
+			return nil, fmt.Errorf("invalid ed25519 public key")
+		}
+
 		pk.Raw = ed25519.PublicKey(raw)
 	case KeyTypeSecp256k1:
-		pub, err := secpEc.NewPublicKey(raw)
+		// secpEc.NewPublicKey accepts any valid encoding, while we
+		// explicitly want compressed, so use the explicit point
+		// decompression routine.
+		p, err := secp.NewIdentityPoint().SetCompressedBytes(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid k256 public key: %w", err)
+		}
+
+		pub, err := secpEc.NewPublicKeyFromPoint(p)
 		if err != nil {
 			return nil, fmt.Errorf("invalid k256 public key: %w", err)
 		}
