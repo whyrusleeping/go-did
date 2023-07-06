@@ -7,7 +7,10 @@ import (
 	"github.com/multiformats/go-multibase"
 )
 
-func DIDFromKey(k interface{}) (DID, error) {
+// OldDIDFromKey is specific to ed25519.PublicKey and is the other way
+// this package used to construct DIDs, using an encoding method that
+// was inconsistent with itself.
+func OldDIDFromKey(k interface{}) (DID, error) {
 	switch k := k.(type) {
 	case ed25519.PublicKey:
 		return didFromEd15519(k), nil

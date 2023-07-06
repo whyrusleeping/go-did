@@ -138,13 +138,15 @@ func (vm VerificationMethod) GetPublicKey() (*PubKey, error) {
 	}
 
 	if vm.PublicKeyMultibase != nil {
-		k, err := KeyFromMultibase(vm)
+		k, err := PubKeyFromMultibaseString(*vm.PublicKeyMultibase)
 		if err != nil {
 			return nil, err
 		}
+		if k.Type != vm.Type {
+			return nil, fmt.Errorf("verfication method type mismatch")
+		}
 
 		return k, nil
-
 	}
 
 	return nil, fmt.Errorf("no public key specified in verificationMethod")
