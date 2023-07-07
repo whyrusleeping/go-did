@@ -46,6 +46,17 @@ var (
 		KeyTypeP256:      MCP256,
 		KeyTypeEd25519:   MCed25519,
 	}
+
+	k256Options = &secpEc.ECDSAOptions{
+		Hash: crypto.SHA256,
+		// Use `[R | S]` encoding.
+		Encoding: secpEc.EncodingCompact,
+		// Checking `s <= n/2` to prevent signature mallability is not
+		// part of SEC 1, Version 2.0.  libsecp256k1 which used to be
+		// used by this package, includes the check, so retain behavior
+		// compatibility.
+		RejectMalleable: true,
+	}
 )
 
 type cryptoPublicKeyEqualAble interface {
@@ -106,16 +117,7 @@ func (k *PrivKey) Sign(b []byte) ([]byte, error) {
 		h := sha256.Sum256(b)
 
 		sk := k.Raw.(*secpEc.PrivateKey)
-		r, s, _, err := sk.Sign(rand.Reader, h[:])
-		if err != nil {
-			return nil, err
-		}
-
-		out := make([]byte, 0, 64)
-		out = append(out, r.Bytes()...)
-		out = append(out, s.Bytes()...)
-
-		return out, nil
+		return sk.Sign(rand.Reader, h[:], k256Options)
 	default:
 		return nil, fmt.Errorf("unsupported key type: %s", k.Type)
 	}
@@ -180,6 +182,13 @@ func GeneratePrivKey(rng io.Reader, keyType string) (*PrivKey, error) {
 		Type: keyType,
 	}
 
+	// Note: While the idiomatic form of GenerateKey takes an
+	// entropy source, determinism is not guaranteed regardless
+	// of the rng parameter by the stdlib, so the only correct
+	// choice is `crypto/rand.Reader`.
+	//
+	// See: https://github.com/golang/go/issues/58637
+
 	var err error
 	switch keyType {
 	case KeyTypeP256:
@@ -191,7 +200,8 @@ func GeneratePrivKey(rng io.Reader, keyType string) (*PrivKey, error) {
 			return nil, fmt.Errorf("ed25519 key generation failed: %w", err)
 		}
 	case KeyTypeSecp256k1:
-		if ret.Raw, err = secpEc.GenerateKey(rng); err != nil {
+		// rng not used, because the library is more opinionated.
+		if ret.Raw, err = secpEc.GenerateKey(); err != nil {
 			return nil, fmt.Errorf("k256 key generation failed: %w", err)
 		}
 	default:
@@ -277,22 +287,8 @@ func (k *PubKey) Verify(msg, sig []byte) error {
 	case KeyTypeSecp256k1:
 		pk := k.Raw.(*secpEc.PublicKey)
 
-		r, s, err := parseK256Sig(sig)
-		if err != nil {
-			return err
-		}
-
 		h := sha256.Sum256(msg)
-
-		// Checking `s <= n/2` to prevent signature mallability is not
-		// part of SEC 1, Version 2.0.  libsecp256k1 which used to be
-		// used by this package, includes the check, so retain behavior
-		// compatibility.
-		if s.IsGreaterThanHalfN() != 0 {
-			return ErrInvalidSignature
-		}
-
-		if !pk.Verify(h[:], r, s) {
+		if !pk.Verify(h[:], sig, k256Options) {
 			return ErrInvalidSignature
 		}
 
@@ -448,24 +444,6 @@ func parseP256Sig(buf []byte) (*big.Int, *big.Int, error) {
 
 	r.SetBytes(buf[:32])
 	s.SetBytes(buf[32:])
-
-	return r, s, nil
-}
-
-func parseK256Sig(buf []byte) (*secp.Scalar, *secp.Scalar, error) {
-	if len(buf) != 2*secp.ScalarSize {
-		return nil, nil, fmt.Errorf("k256 signatures must be 64 bytes")
-	}
-
-	r, err := secp.NewScalarFromCanonicalBytes((*[secp.ScalarSize]byte)(buf[:32]))
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid k256 signature r: %w", err)
-	}
-
-	s, err := secp.NewScalarFromCanonicalBytes((*[secp.ScalarSize]byte)(buf[32:]))
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid k256 signature s: %w", err)
-	}
 
 	return r, s, nil
 }
