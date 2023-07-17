@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/multiformats/go-multibase"
 )
 
 const (
@@ -138,7 +139,12 @@ func (vm VerificationMethod) GetPublicKey() (*PubKey, error) {
 	}
 
 	if vm.PublicKeyMultibase != nil {
-		k, err := PubKeyFromMultibaseString(*vm.PublicKeyMultibase)
+		_, data, err := multibase.Decode(*vm.PublicKeyMultibase)
+		if err != nil {
+			return nil, err
+		}
+
+		k, err := keyDataAndTypeToKey(vm.Type, data)
 		if err != nil {
 			return nil, err
 		}
@@ -197,4 +203,19 @@ func (d *Document) GetPublicKey(id string) (*PubKey, error) {
 	}
 
 	return nil, fmt.Errorf("no key found by that ID")
+}
+
+func VerificationMethodFromKey(k *PubKey) (*VerificationMethod, error) {
+
+	kb := k.rawBytes()
+	if kb == nil {
+		return nil, fmt.Errorf("unrecognized key type")
+	}
+
+	enc, _ := multibase.Encode(multibase.Base58BTC, kb)
+
+	return &VerificationMethod{
+		Type:               k.Type,
+		PublicKeyMultibase: &enc,
+	}, nil
 }
