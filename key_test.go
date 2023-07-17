@@ -79,10 +79,11 @@ func TestKey(t *testing.T) {
 				}
 
 				// Roundtrip Multibase VM encoding.
-				vm := VerificationMethod{
-					Type:               keyType,
-					PublicKeyMultibase: &pkStr,
+				vm, err := VerificationMethodFromKey(pk)
+				if err != nil {
+					t.Fatal(err)
 				}
+
 				pk3, err := vm.GetPublicKey()
 				if err != nil {
 					t.Fatal(err)
