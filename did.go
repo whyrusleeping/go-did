@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
@@ -117,9 +118,17 @@ type VerificationMethod struct {
 	Controller         string        `json:"controller"`
 	PublicKeyJwk       *PublicKeyJwk `json:"publicKeyJwk,omitempty"`
 	PublicKeyMultibase *string       `json:"publicKeyMultibase,omitempty"`
+
+	keyLk       sync.Mutex
+	renderedKey *PubKey
 }
 
-func (vm VerificationMethod) GetPublicKey() (*PubKey, error) {
+func (vm *VerificationMethod) GetPublicKey() (*PubKey, error) {
+	cachedKey, ok := vm.checkKeyCache()
+	if ok {
+		return cachedKey, nil
+	}
+
 	if vm.PublicKeyJwk != nil {
 		k, err := vm.PublicKeyJwk.GetRawKey()
 		if err != nil {
@@ -131,10 +140,12 @@ func (vm VerificationMethod) GetPublicKey() (*PubKey, error) {
 			return nil, fmt.Errorf("only ed25519 keys are currently supported")
 		}
 
-		return &PubKey{
+		pk := &PubKey{
 			Type: "ed25519",
 			Raw:  []byte(ek),
-		}, nil
+		}
+		vm.setKey(pk)
+		return pk, nil
 	}
 
 	if vm.PublicKeyMultibase != nil {
@@ -146,10 +157,27 @@ func (vm VerificationMethod) GetPublicKey() (*PubKey, error) {
 			return nil, fmt.Errorf("verfication method type mismatch")
 		}
 
+		vm.setKey(k)
 		return k, nil
 	}
 
 	return nil, fmt.Errorf("no public key specified in verificationMethod")
+}
+
+func (vm *VerificationMethod) checkKeyCache() (*PubKey, bool) {
+	vm.keyLk.Lock()
+	defer vm.keyLk.Unlock()
+	if vm.renderedKey != nil {
+		return vm.renderedKey, true
+	}
+
+	return nil, false
+}
+
+func (vm *VerificationMethod) setKey(pubk *PubKey) {
+	vm.keyLk.Lock()
+	defer vm.keyLk.Unlock()
+	vm.renderedKey = pubk
 }
 
 type PublicKeyJwk struct {
