@@ -28,6 +28,7 @@ const (
 	KeyTypeSecp256k1 = "EcdsaSecp256k1VerificationKey2019"
 	KeyTypeP256      = "EcdsaSecp256r1VerificationKey2019"
 	KeyTypeEd25519   = "Ed25519VerificationKey2020"
+	KeyTypeMultikey  = "Multikey"
 
 	didKeyPrefix = "did:key:"
 )

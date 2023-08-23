@@ -149,6 +149,15 @@ func (vm *VerificationMethod) GetPublicKey() (*PubKey, error) {
 		return pk, nil
 	}
 
+	if vm.Type == KeyTypeMultikey && vm.PublicKeyMultibase != nil {
+		pk, err := PubKeyFromMultibaseString(*vm.PublicKeyMultibase)
+		if err != nil {
+			return nil, err
+		}
+		vm.setKey(pk)
+		return pk, nil
+	}
+
 	if vm.PublicKeyMultibase != nil {
 		_, data, err := multibase.Decode(*vm.PublicKeyMultibase)
 		if err != nil {
@@ -225,7 +234,7 @@ func (pk *PublicKeyJwk) GetRawKey() (interface{}, error) {
 
 func (d *Document) GetPublicKey(id string) (*PubKey, error) {
 	for _, vm := range d.VerificationMethod {
-		if id == vm.ID || id == "" {
+		if id == "" || id == vm.ID || (strings.HasPrefix(id, "#") && (d.ID.String()+id == vm.ID)) {
 			return vm.GetPublicKey()
 		}
 	}
