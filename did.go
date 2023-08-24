@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/multiformats/go-multibase"
 )
 
 const (
@@ -148,8 +149,22 @@ func (vm *VerificationMethod) GetPublicKey() (*PubKey, error) {
 		return pk, nil
 	}
 
+	if vm.Type == KeyTypeMultikey && vm.PublicKeyMultibase != nil {
+		pk, err := PubKeyFromMultibaseString(*vm.PublicKeyMultibase)
+		if err != nil {
+			return nil, err
+		}
+		vm.setKey(pk)
+		return pk, nil
+	}
+
 	if vm.PublicKeyMultibase != nil {
-		k, err := PubKeyFromMultibaseString(*vm.PublicKeyMultibase)
+		_, data, err := multibase.Decode(*vm.PublicKeyMultibase)
+		if err != nil {
+			return nil, err
+		}
+
+		k, err := keyDataAndTypeToKey(vm.Type, data)
 		if err != nil {
 			return nil, err
 		}
@@ -219,10 +234,25 @@ func (pk *PublicKeyJwk) GetRawKey() (interface{}, error) {
 
 func (d *Document) GetPublicKey(id string) (*PubKey, error) {
 	for _, vm := range d.VerificationMethod {
-		if id == vm.ID || id == "" {
+		if id == "" || id == vm.ID || (strings.HasPrefix(id, "#") && (d.ID.String()+id == vm.ID)) {
 			return vm.GetPublicKey()
 		}
 	}
 
 	return nil, fmt.Errorf("no key found by that ID")
+}
+
+func VerificationMethodFromKey(k *PubKey) (*VerificationMethod, error) {
+
+	kb := k.rawBytes()
+	if kb == nil {
+		return nil, fmt.Errorf("unrecognized key type")
+	}
+
+	enc, _ := multibase.Encode(multibase.Base58BTC, kb)
+
+	return &VerificationMethod{
+		Type:               k.Type,
+		PublicKeyMultibase: &enc,
+	}, nil
 }

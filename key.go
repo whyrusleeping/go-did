@@ -28,6 +28,7 @@ const (
 	KeyTypeSecp256k1 = "EcdsaSecp256k1VerificationKey2019"
 	KeyTypeP256      = "EcdsaSecp256r1VerificationKey2019"
 	KeyTypeEd25519   = "Ed25519VerificationKey2020"
+	KeyTypeMultikey  = "Multikey"
 
 	didKeyPrefix = "did:key:"
 )
@@ -233,24 +234,11 @@ func (k *PubKey) MultibaseString() string {
 		return "<invalid key type>"
 	}
 
-	var kb []byte
-	switch k.Type {
-	case KeyTypeEd25519:
-		kb = []byte(k.Raw.(ed25519.PublicKey))
-	case KeyTypeP256:
-		pk := k.Raw.(*ecdsa.PublicKey)
-		if !pk.Curve.IsOnCurve(pk.X, pk.Y) {
-			return "<invalid key>"
-		}
-		kb = elliptic.MarshalCompressed(pk.Curve, pk.X, pk.Y)
-	case KeyTypeSecp256k1:
-		pk := k.Raw.(*secpEc.PublicKey)
-		p := pk.Point()
-		if p.IsIdentity() != 0 {
-			return "<invalid key>"
-		}
-		kb = p.CompressedBytes()
+	kb := k.rawBytes()
+	if kb == nil {
+		return "<invalid key>"
 	}
+
 	buf := varEncode(prefix, kb)
 
 	kstr, err := multibase.Encode(multibase.Base58BTC, buf)
@@ -258,6 +246,28 @@ func (k *PubKey) MultibaseString() string {
 		panic(err)
 	}
 	return kstr
+}
+
+func (k *PubKey) rawBytes() []byte {
+	switch k.Type {
+	case KeyTypeEd25519:
+		return []byte(k.Raw.(ed25519.PublicKey))
+	case KeyTypeP256:
+		pk := k.Raw.(*ecdsa.PublicKey)
+		if !pk.Curve.IsOnCurve(pk.X, pk.Y) {
+			return nil
+		}
+		return elliptic.MarshalCompressed(pk.Curve, pk.X, pk.Y)
+	case KeyTypeSecp256k1:
+		pk := k.Raw.(*secpEc.PublicKey)
+		p := pk.Point()
+		if p.IsIdentity() != 0 {
+			return nil
+		}
+		return p.CompressedBytes()
+	default:
+		return nil
+	}
 }
 
 func (k *PubKey) Verify(msg, sig []byte) error {
@@ -357,10 +367,13 @@ func PubKeyFromMultibaseString(s string) (*PubKey, error) {
 		return nil, fmt.Errorf("invalid key multicodec prefix: %x", prefix)
 	}
 
+	return keyDataAndTypeToKey(kt, raw)
+}
+
+func keyDataAndTypeToKey(kt string, raw []byte) (*PubKey, error) {
 	pk := &PubKey{
 		Type: kt,
 	}
-
 	// Convert from the binary encoding of the compressed point,
 	// to the actual concrete public key type.
 	switch kt {
@@ -376,14 +389,14 @@ func PubKeyFromMultibaseString(s string) (*PubKey, error) {
 		// secpEc.NewPublicKey accepts any valid encoding, while we
 		// explicitly want compressed, so use the explicit point
 		// decompression routine.
-		p, err := secp.NewIdentityPoint().SetCompressedBytes(raw)
+		p, err := secp.NewIdentityPoint().SetBytes(raw)
 		if err != nil {
-			return nil, fmt.Errorf("invalid k256 public key: %w", err)
+			return nil, fmt.Errorf("invalid k256 public key (setBytes): %w", err)
 		}
 
 		pub, err := secpEc.NewPublicKeyFromPoint(p)
 		if err != nil {
-			return nil, fmt.Errorf("invalid k256 public key: %w", err)
+			return nil, fmt.Errorf("invalid k256 public key (keyFromPt): %w", err)
 		}
 		pk.Raw = pub
 	case KeyTypeP256:
