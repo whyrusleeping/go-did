@@ -66,7 +66,7 @@ var registerCmd = &cli.Command{
 		body := &RegisterBody{
 			InitialKey: id,
 			InitialVerification: did.VerificationMethod{
-				ID:   id,
+				ID:   id.String(),
 				Type: "JsonWebKey2020",
 				//Controller         string        `json:"controller"`
 				PublicKeyJwk: &did.PublicKeyJwk{j},
